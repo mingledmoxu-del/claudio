@@ -1,0 +1,47 @@
+{
+  "name": "laryc-ai-music",
+  "version": "1.0.0",
+  "description": "Claudio AI Music Radio Studio",
+  "main": "main.js",
+  "author": "Claudio AI",
+  "license": "ISC",
+  "scripts": {
+    "start": "electron .",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"wait-on http://localhost:5173 && electron .\"",
+    "dist:win": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.omo.larycai",
+    "productName": "Claudio AI Music",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "client/dist/**/*",
+      "server/dist/**/*",
+      "server/node_modules/**/*",
+      "server/data/**/*",
+      "server/.env"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "server/data/**/*"
+    ]
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^34.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-is-dev": "^2.0.0",
+    "wait-on": "^7.2.0"
+  }
+}

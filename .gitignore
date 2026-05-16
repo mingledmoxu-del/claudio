@@ -1,0 +1,30 @@
+# Dependency directories
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+dist_electron/
+client/dist/
+server/dist/
+
+# Local configuration and secrets
+.env
+server/.env
+*.local
+.claude/
+
+# Database and cache
+server/data/state.db
+server/data/cache/
+*.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
