@@ -2,11 +2,9 @@ import dotenv from 'dotenv';
 // @ts-ignore
 import pkg from 'NeteaseCloudMusicApi';
 import db from '../db.js';
-const { search, song_url, lyric, playlist_track_all, playlist_detail, recommend_songs } = pkg;
+const { search, song_url, lyric, playlist_track_all, playlist_detail, recommend_songs, login_qr_key, login_qr_create, login_qr_check, user_playlist, user_account, login_status } = pkg;
 
 dotenv.config();
-
-const COOKIE = process.env.NETEASE_COOKIE || '';
 
 export interface Song {
   id: string;
@@ -18,18 +16,42 @@ export interface Song {
 }
 
 class MusicService {
+  private cookie: string = '';
+
+  constructor() {
+    this.loadCookie();
+  }
+
+  private loadCookie() {
+    try {
+      const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('NETEASE_COOKIE') as { value: string };
+      this.cookie = row?.value || process.env.NETEASE_COOKIE || '';
+      if (this.cookie) {
+        console.log('[Music] 已加载网易云 Cookie (长度: ' + this.cookie.length + ')');
+      }
+    } catch (e) {
+      this.cookie = process.env.NETEASE_COOKIE || '';
+    }
+  }
+
+  setCookie(newCookie: string) {
+    this.cookie = newCookie;
+    db.prepare('INSERT OR REPLACE INTO configs (key, value) VALUES (?, ?)').run('NETEASE_COOKIE', newCookie);
+    console.log('[Music] Cookie 已更新并保存到数据库');
+  }
+
   /**
    * 获取每日推荐歌曲 (需要有效 COOKIE)
    */
   async getRecommendSongs(): Promise<Song[]> {
     try {
       console.log('[Music] 尝试获取个性化推荐...');
-      if (!COOKIE || COOKIE.length < 10) {
+      if (!this.cookie || this.cookie.length < 10) {
         console.warn('[Music] 未配置有效 COOKIE，尝试进入兜底模式');
         return this.getFallbackSongs();
       }
 
-      const result = await recommend_songs({ cookie: COOKIE });
+      const result = await recommend_songs({ cookie: this.cookie });
       if (result.status !== 200) {
         console.warn(`[Music] 推荐接口返回状态 ${result.status}，进入兜底模式`);
         return this.getFallbackSongs();
@@ -80,7 +102,7 @@ class MusicService {
         keywords,
         type: 1, // 1: 单曲
         limit,
-        cookie: COOKIE
+        cookie: this.cookie
       });
 
       if (result.status !== 200) throw new Error('搜索失败');
@@ -109,7 +131,7 @@ class MusicService {
       const result = await song_url({
         id,
         br: 320000, 
-        cookie: COOKIE
+        cookie: this.cookie
       });
 
       if (result.status !== 200) return null;
@@ -126,7 +148,7 @@ class MusicService {
    */
   async getLyrics(id: string): Promise<string | null> {
     try {
-      const result = await lyric({ id, cookie: COOKIE });
+      const result = await lyric({ id, cookie: this.cookie });
       if (result.status !== 200) return null;
       return (result.body.lrc as any)?.lyric || null;
     } catch (error) {
@@ -150,7 +172,7 @@ class MusicService {
 
       const result = await playlist_track_all({
         id: cleanId,
-        cookie: COOKIE
+        cookie: this.cookie
       });
 
       if (result.status !== 200) {
@@ -177,7 +199,7 @@ class MusicService {
       };
 
       try {
-        const detailResult = await playlist_detail({ id: cleanId, cookie: COOKIE });
+        const detailResult = await playlist_detail({ id: cleanId, cookie: this.cookie });
         if (detailResult.status === 200) {
           const playlist = (detailResult.body as any).playlist;
           info.name = playlist?.name || info.name;
@@ -192,6 +214,62 @@ class MusicService {
     } catch (error) {
       console.error('MusicService GetPlaylist Error:', error);
       return { songs: [], info: null };
+    }
+  }
+
+  // --- 扫码登录相关 ---
+
+  async getQRKey() {
+    const res = await login_qr_key({}) as any;
+    return res.body.data.unikey;
+  }
+
+  async createQR(key: string) {
+    const res = await login_qr_create({
+      key,
+      qrimg: true
+    }) as any;
+    return res.body.data.qrimg; // Base64 格式的二维码图片
+  }
+
+  async checkQR(key: string) {
+    const res = await login_qr_check({ key });
+    return res.body; // 包含 code (800过期, 801等待, 802待确认, 803完成) 和 cookie
+  }
+
+  async getStatus() {
+    if (!this.cookie) return { isLoggedIn: false };
+    try {
+      const res = await login_status({ cookie: this.cookie }) as any;
+      return { 
+        isLoggedIn: res.body.data?.profile !== null,
+        profile: res.body.data?.profile
+      };
+    } catch (e) {
+      return { isLoggedIn: false };
+    }
+  }
+
+  async getUserPlaylists() {
+    if (!this.cookie) return [];
+    try {
+      // 1. 获取用户账号信息
+      const accountRes = await user_account({ cookie: this.cookie }) as any;
+      const uid = accountRes.body.profile?.userId;
+      if (!uid) return [];
+
+      // 2. 获取用户歌单
+      const playlistRes = await user_playlist({ uid, cookie: this.cookie }) as any;
+      return (playlistRes.body.playlist || []).map((p: any) => ({
+        id: p.id.toString(),
+        name: p.name,
+        cover: p.coverImgUrl,
+        trackCount: p.trackCount,
+        creator: p.creator?.nickname
+      }));
+    } catch (e) {
+      console.error('[Music] GetUserPlaylists Error:', e);
+      return [];
     }
   }
 }

@@ -21,7 +21,8 @@ class WeatherService {
    * 获取实时天气 (使用 wttr.in 接口，无需 API Key)
    */
   async getCurrentWeather(city?: string): Promise<WeatherData | null> {
-    const targetCity = city || process.env.CITY || 'Shanghai';
+    // 如果环境变量没有 CITY 且调用没传 city，则留空让 wttr.in 自动根据 IP 定位
+    const targetCity = city || process.env.CITY || '';
     
     // 检查缓存
     const now = Date.now();
@@ -30,9 +31,10 @@ class WeatherService {
     }
 
     try {
-      console.log(`正在获取 ${targetCity} 的天气信息...`);
+      console.log(`正在获取天气信息 (定位: ${targetCity || '自动识别'})...`);
       // 使用 wttr.in 的 JSON 格式接口，lang=zh 尝试获取中文描述
-      const response = await axios.get(`https://wttr.in/${targetCity}?format=j1&lang=zh`);
+      const url = targetCity ? `https://wttr.in/${targetCity}?format=j1&lang=zh` : `https://wttr.in/?format=j1&lang=zh`;
+      const response = await axios.get(url);
       
       if (response.status !== 200) return null;
 

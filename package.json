@@ -10,7 +10,8 @@
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\" \"wait-on http://localhost:5173 && electron .\"",
-    "dist:win": "electron-builder --win --x64"
+    "dist:win": "electron-builder --win --x64",
+    "package:win": "electron-packager . \"Claudio AI Music\" --platform=win32 --arch=x64 --out=dist_electron --overwrite --rebuild --ignore=\"(client/src|client/node_modules|server/src|server/test-tts.ts|dist_electron|.git)\""
   },
   "build": {
     "appId": "com.omo.larycai",
@@ -20,8 +21,9 @@
     },
     "win": {
       "target": [
-        "nsis"
-      ]
+        "zip"
+      ],
+      "forceCodeSigning": false
     },
     "files": [
       "main.js",
@@ -38,10 +40,12 @@
     ]
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "concurrently": "^8.2.2",
     "electron": "^34.0.0",
     "electron-builder": "^24.13.3",
     "electron-is-dev": "^2.0.0",
+    "electron-packager": "^17.1.2",
     "wait-on": "^7.2.0"
   }
 }

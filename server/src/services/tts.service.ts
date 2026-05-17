@@ -11,19 +11,15 @@ dotenv.config();
 const CACHE_DIR = process.env.AUDIO_CACHE_DIR || './data/cache';
 
 class TTSService {
-  private edgeTts: any;
-
   constructor() {
     if (!fs.existsSync(CACHE_DIR)) {
       fs.mkdirSync(CACHE_DIR, { recursive: true });
     }
-    // edge-tts-universal 的初始化
-    this.edgeTts = new EdgeTTS();
   }
 
   async textToSpeech(text: string): Promise<string | null> {
     const provider = process.env.TTS_PROVIDER || 'edge';
-    const edgeVoice = process.env.EDGE_VOICE || 'zh-CN-YunyeNeural';
+    const edgeVoice = process.env.EDGE_VOICE || 'zh-CN-YunxiNeural';
     const edgeSpeed = process.env.EDGE_SPEED || '0%';
 
     // 文本清理
@@ -54,19 +50,18 @@ class TTSService {
 
   private async edgeTTS(text: string, filePath: string, voice: string, rate: string): Promise<string | null> {
     try {
-      console.log(`[TTS] 正在使用 edge-tts-universal 合成 -> 音色: ${voice}, 语速: ${rate}`);
+      // 确保 rate 以 + 或 - 开头
+      const formattedRate = (rate.startsWith('+') || rate.startsWith('-')) ? rate : `+${rate}`;
+      console.log(`[TTS] 正在使用 edge-tts-universal 合成 -> 音色: ${voice}, 语速: ${formattedRate}`);
       
-      // edge-tts-universal 的调用方式
-      const buffer = await this.edgeTts.synthesize(text, voice, {
-        rate: rate
-      });
-
-      if (buffer) {
-        fs.writeFileSync(filePath, buffer);
-        console.log(`[TTS] 合成成功: ${path.basename(filePath)}`);
-        return `/cache/${path.basename(filePath)}`;
-      }
-      return null;
+      const tts = new EdgeTTS(text, voice, { rate: formattedRate });
+      const result = await tts.synthesize();
+      
+      const audioBuffer = Buffer.from(await result.audio.arrayBuffer());
+      fs.writeFileSync(filePath, audioBuffer);
+      
+      console.log(`[TTS] 合成成功: ${path.basename(filePath)}`);
+      return `/cache/${path.basename(filePath)}`;
     } catch (e) {
       console.error('[TTS] edge-tts-universal 失败:', e);
       return null;
@@ -112,6 +107,29 @@ class TTSService {
       });
       ws.on('error', () => resolve(null));
     });
+  }
+
+  /**
+   * 试听音色接口
+   */
+  async preview(text: string, voice: string): Promise<string | null> {
+    const hash = crypto.createHash('md5').update(`preview-${text}-${voice}`).digest('hex');
+    const fileName = `preview-${hash}.mp3`;
+    const filePath = path.resolve(CACHE_DIR, fileName);
+
+    if (fs.existsSync(filePath)) return `/cache/${fileName}`;
+
+    try {
+      // 这里的 rate 必须写成 +0% 而不能是 0%
+      const tts = new EdgeTTS(text, voice, { rate: '+0%' });
+      const result = await tts.synthesize();
+      const audioBuffer = Buffer.from(await result.audio.arrayBuffer());
+      fs.writeFileSync(filePath, audioBuffer);
+      return `/cache/${fileName}`;
+    } catch (e) {
+      console.error('[TTS] Preview 失败:', e);
+      return null;
+    }
   }
 }
 

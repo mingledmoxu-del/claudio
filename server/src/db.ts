@@ -5,8 +5,8 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const dbPath = process.env.DB_PATH || './data/state.db';
-const dataDir = path.dirname(dbPath);
+const dbPath = process.env.DB_PATH || './data/claudio.db';
+const dataDir = path.dirname(path.resolve(dbPath));
 
 // Ensure data directory exists
 if (!fs.existsSync(dataDir)) {
@@ -51,6 +51,12 @@ function initDb() {
     creator TEXT,
     cover TEXT,
     imported_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`).run();
+
+  // 配置表 (用于存储 Cookie 等)
+  db.prepare(`CREATE TABLE IF NOT EXISTS configs (
+    key TEXT PRIMARY KEY,
+    value TEXT
   )`).run();
 }
 

@@ -25,14 +25,15 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 const cacheDir = process.env.AUDIO_CACHE_DIR || './data/cache';
+const resolvedCacheDir = path.resolve(cacheDir);
 
-if (!fs.existsSync(cacheDir)) {
-  fs.mkdirSync(cacheDir, { recursive: true });
+if (!fs.existsSync(resolvedCacheDir)) {
+  fs.mkdirSync(resolvedCacheDir, { recursive: true });
 }
 
 app.use(cors());
 app.use(express.json());
-app.use('/cache', express.static(path.resolve(cacheDir)));
+app.use('/cache', express.static(resolvedCacheDir));
 
 app.get('/', (req, res) => {
   res.send('<h1>Claudio AI Radio Backend</h1><p>API is running at <a href="/api/status">/api/status</a>. Please open the frontend at http://localhost:5173</p>');
@@ -40,6 +41,39 @@ app.get('/', (req, res) => {
 
 app.get('/api/status', (req, res) => {
   res.json({ status: 'running', message: 'Claudio AI Radio Server is online' });
+});
+
+// 获取可用音色列表
+app.get('/api/tts/voices', (req, res) => {
+  const voices = [
+    { id: 'zh-CN-YunyangNeural', name: '云扬 (专业稳重男声)', desc: '语调平和专业，适合新闻与电台播报', gender: 'Male' },
+    { id: 'zh-CN-YunxiNeural', name: '云希 (阳光开朗男声)', desc: '富有亲和力，适合日常聊天与互动', gender: 'Male' },
+    { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓 (温柔治愈女声)', desc: '经典温暖声音，极具治愈感', gender: 'Female' },
+    { id: 'zh-CN-XiaoyiNeural', name: '晓伊 (活泼灵动女声)', desc: '声音清脆悦耳，充满青春活力', gender: 'Female' },
+    { id: 'zh-CN-YunjianNeural', name: '云健 (激情解说男声)', desc: '语调高昂有力，适合解说与宣传', gender: 'Male' },
+    { id: 'zh-CN-YunxiaNeural', name: '云夏 (萌系可爱男声)', desc: '声音稚嫩可爱，适合轻松有趣的场景', gender: 'Male' }
+  ];
+  res.json(voices);
+});
+
+// 试听音色
+app.post('/api/tts/preview', async (req, res) => {
+  const { voice, text } = req.body;
+  if (!voice) return res.status(400).json({ error: 'Missing voice' });
+  const previewText = text || '你好，我是你的电台助理克劳迪奥。希望我的声音能给你带来片刻的宁静。';
+  try {
+    // 强制使用 edge 模式生成试听，指定音色
+    const audioUrl = await ttsService.preview(previewText, voice);
+    res.json({ audioUrl });
+  } catch (err) { res.status(500).json({ error: 'Preview failed' }); }
+});
+
+// 更新当前配置
+app.post('/api/tts/config', (req, res) => {
+  const { voice, speed } = req.body;
+  if (voice) process.env.EDGE_VOICE = voice;
+  if (speed) process.env.EDGE_SPEED = speed;
+  res.json({ success: true, current: { voice: process.env.EDGE_VOICE, speed: process.env.EDGE_SPEED } });
 });
 
 app.get('/api/weather', async (req, res) => {
@@ -86,6 +120,51 @@ app.get('/api/playlists', (req, res) => {
     const playlists = db.prepare('SELECT * FROM playlists ORDER BY imported_at DESC').all();
     res.json(playlists);
   } catch (err) { res.status(500).json({ error: 'DB Error' }); }
+});
+
+// --- 扫码登录接口 ---
+
+app.get('/api/login/qr/key', async (req, res) => {
+  try {
+    const unikey = await musicService.getQRKey();
+    res.json({ unikey });
+  } catch (err) { res.status(500).json({ error: 'Failed to get QR key' }); }
+});
+
+app.get('/api/login/qr/create', async (req, res) => {
+  const { key } = req.query;
+  if (!key) return res.status(400).json({ error: 'Missing key' });
+  try {
+    const qrimg = await musicService.createQR(key as string);
+    res.json({ qrimg });
+  } catch (err) { res.status(500).json({ error: 'Failed to create QR code' }); }
+});
+
+app.get('/api/login/qr/check', async (req, res) => {
+  const { key } = req.query;
+  if (!key) return res.status(400).json({ error: 'Missing key' });
+  try {
+    const result: any = await musicService.checkQR(key as string);
+    // 如果登录成功 (code 803)，保存 Cookie
+    if (result.code === 803 && result.cookie) {
+      musicService.setCookie(result.cookie);
+    }
+    res.json(result);
+  } catch (err) { res.status(500).json({ error: 'Failed to check QR status' }); }
+});
+
+app.get('/api/login/status', async (req, res) => {
+  try {
+    const status = await musicService.getStatus();
+    res.json(status);
+  } catch (err) { res.status(500).json({ error: 'Failed to get status' }); }
+});
+
+app.get('/api/user/playlists', async (req, res) => {
+  try {
+    const playlists = await musicService.getUserPlaylists();
+    res.json(playlists);
+  } catch (err) { res.status(500).json({ error: 'Failed to get user playlists' }); }
 });
 
 app.get('/api/music/lyric/:id', async (req, res) => {
